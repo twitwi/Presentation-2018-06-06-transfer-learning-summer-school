@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+
+        <!--
+        "Domain Adaptation and Multi-view Learning: using subspace alignment and landmark projections."
+
+The talk will be articulated around two concepts: subspace alignment and projection on landmarks.
+I will first present a with a very simple yet effective domain adaptation method based on subspace alignment, followed by it's non-linear extension that projects the points on a set of selected landmarks (and its incarnation in deep domain adaptation).
+The rest of the talk will discuss how landmarks can also be used in a context of multi-view learning to allow fast learning of accurate models.
+-->
+
+        <title>Domain Adaptation and Multi-view Learning: using subspace alignment and landmark projections</title>
+
+        <meta name="author" content="Rémi Emonet">
+        <meta name="venue" content="Summer School on Transfer Learning">
+        <meta name="date" content="2018-06-06">
+
+        <style type="text/css">
+            /* a few nicer slides */
+            .blackbg {background: black !important;}
+            .title-slide ul li { list-style: none; }
+            .title-slide ul {
+                font-size: 20px; color: darkgrey;
+                text-align: center;
+                position: absolute; bottom: 50px; left:0; right: 0;
+            }
+            .title-slide h1 {
+              font-size: 30px;
+            }
+
+            .dense {font-size: 66%;}
+        </style>
+        <style>
+        /* show last sub slide */
+        .deck-container.lastsubslide:not(.no-status)::after {
+           position: absolute;
+           right: 0; bottom: 0;
+           content: "⛶";
+           color: grey;
+           font-size: 40px;
+        }
+        .cornerlogo {
+          background: url(media/hcurien.svg), white;
+          background-size: contain;
+          background-repeat: no-repeat;
+          position: absolute;
+          border-radius: 7px;
+          border: 3px solid white;
+          box-shadow: 0 0 0 1px black;
+        }
+        .cornerlogo:hover { filter: blur(2px); }
+        .no-status:not(.keep-logo) .cornerlogo { display: none !important; }
+
+        .highlight {color: red !important;}
+        .plan > ul {
+          position: absolute;
+          left: 0;
+          bottom: 30px;
+          background: rgba(255,255,255,.5);
+        }
+        .dense {font-size: 85%;}
+        .denser {font-size: 70%;}
+        .hidden {visibility: hidden;}
+
+        .paper h2 {
+          font-size: 75%;
+        }
+        .paper h2 em {
+          font-size: 90%;
+          color: black;
+          font-weight: normal;
+        }
+
+          li.card {
+            background: #F4F4F4;
+            list-style: none;
+            padding: 0.5em 0.5em !important;
+            padding-top: 0.1em !important;
+            margin: 0.8em 0.6em  !important;
+            margin-left: -1em !important;
+            box-shadow: black 2px 2px 3px;
+          }
+          li.card>ul {
+            background: white;
+            margin: -0.5em !important;
+            margin-top: 0.1em !important;
+            padding-left: 1em ;
+            padding-bottom: 0.5em;
+            border-top: 1px solid black;
+          }
+          .inlineblock>ul>li {
+            display: inline-block;
+            list-style: none;
+          }
+
+          src {color: #28AE9A;}
+          tgt {color: #FFA500;}
+
+          .custom1 img {height: 100px;}
+          .custom2 em {font-size: 75%; color: black;}
+          .normalvsda {
+              position: absolute;
+              right: 10px; top:10px;
+              background: white;
+              border: 2px solid black;
+              border-radius: 10px;
+                      }
+
+                                .dense {font-size: 85%;}
+          .denser {font-size: 70%;}
+          .hidden {visibility: hidden;}
+
+
+                      .verydensetitle h2 { font-size: 70%;}
+        </style>
+
+
+	<script src="deck-packed.js"></script>
+        <script>
+            var cssAndJs = ["light-red-dense.css"]; // include the theme (can add any css or js to the list)
+            var options = {
+            AFTERSMARTDOWN: function() {
+                    $(".deck-container>.libyli li:not(li li):not(.notslide)").addClass("slide");
+                    $("li.libyli>ul>li:not(.notslide)").addClass("slide");
+                    $(".deck-container>.noshow").remove();
+            }
+
+            }; // to override default deck.js options
+            includedeck(cssAndJs, options);
+        </script>
+    </head>
+    <body>
+        <div class="deck-container">
+
+            <!-- splash screen when loading -->
+            <div class="deck-loading-splash" style="background: black; color: chartreuse;">
+                <span class="vcenter" style="font-size: 30px; font-family: Arial; ">Please wait, while the deck is loading…</span>
+            </div>
+
+
+            <!-- --------------------------- -->
+            <!-- slides in extended markdown -->
+            <section class="smart">
+
+
+# <span>{.var-title-br}</span> {*no-status title-slide} // comment
+- <span class="var-author"></span>
+- <span class="var-venue"></span>
+- <span class="var-date"></span>
+
+<img src="media/logos.svg" />
+
+## `Team Data Intelligence @ LabHC` <br/> `(at some point in the past, not exaustive) {denser}` {image-full bottom-left darkened /black-bg /no-status} // Machine Learning Group in Saint Étienne {comment}
+<div class="img" style="background-image: url('media/team-di.jpg')"></div>
+
+## Disclaimer {image-full bottom-left darkened /black-bg /no-status}
+
+<!-- ##########  Summary  ########## -->
+## In a nutshell {#nutshell}
+- Transfer learning has multiple facets
+  - multi-task
+  - multi-view
+  - multi-domain
+- Domain adaptation by bringing distributions together
+  - by aligning subspaces obtained from PCA
+  - non-linearly by using projection on landmarks
+- Landmarks can also be used for multiview-learning
+  - random landmark selection
+  - non-linear projection on the landmarks
+  - fast linear model
+
+
+<!-- ##########  Intro Transfer/DA/MT  ########## -->
+# Transfer Learning: <br/> Multi-* Learning // Domain Adaptation, Multi-View, Multi-Task
+
+## Multi-Task Learning
+- Covered a lot in this summer school
+- (At least), different output for each task, e.g.,
+  - different classification task: dog-vs-cat and domestic-vs-wild
+  - different output kind: image segmentation and image classification
+  - ...
+
+## Multi-View Learning
+- Input have multiple views, e.g.
+  - different viewpoints of an object
+  - multi-modal perception
+  - different medical tests on a patient
+  - different sets of features extracted from images
+  - ...
+- There could be missing views for some input data
+
+*(we'll come back to this){denser}*
+
+# Multi-domain Learning?
+
+## Domain Adaptation: What and Why? {libyli}
+- When do we need Domain Adaptation (DA)? {card}
+  - The <src>training</src> distribution is different from the <tgt>testing</tgt> distribution
+- Example Domain Adaptation task? {card}
+  - Given: <src>labeled</src> images (e.g., <src>fruits</src> images)
+  - Task: what fruit appears on this <tgt>unlabeled</tgt> images of <tgt>trees</tree>
+  - <br/>{no}
+  - {inlineblock center no custom1}
+      - <img src="fruit-images/blueberry-fruit.jpg"></img><br/><src>Blueberry</src>
+      - <img src="fruit-images/almond-fruit.jpg"></img><br/><src>Almond</src>
+      - <span style="font-size: 4em">&rArr;</span><br/><br/>
+      - <img src="fruit-images/blueberry-tree.jpg"></img><br/><tgt>Blueberry</tgt>
+      - <img src="fruit-images/almond-tree.jpg"></img><br/><tgt>Almond</tgt>
+- How can we learn, from <src>one distribution</src>, <br/> a low-error classifier on <tgt>another distribution</tgt>?
+
+
+
+## Overview {#plan .plan image-fit darkened top-right /no-status}
+<div class="img" style="background-image: url('media/overview.jpg')" data-attribution="https://www.flickr.com/photos/p1r/7044898925/sizes/l/" data-attribution-content="..." data-scale=""></div>
+- The Multiple Facets of Transfer Learning {tlearn}
+- Domain Adaptation by Subspace Alignment {dasa}
+- Landmark-based Kernelized Subspace Alignment {landmarks no}
+- Deep Multi-Domain Multi-Task Learning {mdmt}
+- Random Landmark projection for Multi-View Learning {mvlsvm}
+
+
+<!--
+##  (Unsplash) {image-full bottom-left darkened /black-bg /no-status}
+<div class="img" style="background-image: url('test.jpg')" data-attribution="https://unsplash.com/photos/enibTztAfEw" data-attribution-content=" (Unsplash)" data-scale=""></div>
+-->
+
+<!-- ##########  LS-SA  ########## -->
+# @copy:#plan: %+class:highlight: .dasa
+
+# Unupervised Domain Adaptation {title-slide}
+- by Subspace Alignment: B. Fernando
+- and Landmark Selection: R. Aljundi
+
+## Domain Adaptation: task and notations {libyli}
+- Typical binary classification task
+  - $X$ : input space, $Y = \\{-1,+1\\} {}$ : output space
+- Typical supervised classification {card}
+  - $\green{P_S} {}$ <src>source</src> domain: distribution over $X \times Y$
+  // - $\green{D_S}{}$: marginal distribution over $X$
+  - $\green{S}{} = \\{(x^s_i,y^s_i)\\}_{i=1}^{m_s} \sim (\green{P_S})^{m_s} {}$: a sample of labeled points
+  - Goal: Find a classifier $h \in \mathcal{H}{}$ with a low <src>source</src> error $R\_{\green{P\_S}}(h) = \mathbf{E}\_{(x^s,y^s)\sim \green{P_S}}\;\; \mathbf{I}\big[h(x^s)\ne y^s\big] {}$
+- Domain Adaptation {card}
+  - $\orange{P_T} {}$ <tgt>target</tgt> domain: distribution over $X \times Y$, ($\orange{D_T}{}$: marginal over $X$)
+  - $\orange{T}{} = \\{(x^t_i)\\}_{j=1}^{m_t} \sim (\orange{D_T})^{m_t} {}$: a sample of unlabeled target points
+  - Goal: Find a classifier $h \in \mathcal{H}{}$ with a low <tgt>target</tgt> error $R\_{\orange{P\_T}}(h) = \mathbf{E}\_{(x^t,y^t)\sim \orange{P_T}}\;\; \mathbf{I}\big[h(x^t)\ne y^t\big] {}$
+
+@svg:images-da/normal-vs-da.svg 375px 280px {normalvsda slide}
+
+## Domain Adaptation − Domain Divergence {libyli}
+- {card dense libyli}
+  - {inlineblock no}
+      - Labeled <src>source</src> samples <src>$S$</src> <br/>drawn *i.i.d.* from $\green{P_S}{}$ {c5}
+      - {c1}
+      - Unlabeled <tgt>target</tgt> samples <tgt>$T$</tgt>  <br/>drawn *i.i.d.* from $\orange{P_T}{}$ {c5}
+  -  $h$ is learned on the <src>source</src>, how does it perform on the <tgt>target</tgt>?
+  - &rArr; it depends on the closeness of the domains{no}
+  - {inlineblock no}
+      - <img src="images-da/domains-far.svg" width="250px"/>
+      - <img src="images-da/domains-close.svg" width="250px"/>
+- Adaptation Bound [Ben-David et al., MLJ’10, NIPS’06] {card dense libyli}
+  - $\forall h\in\mathcal{H},\quad R\_{\orange{P\_T}}(h)\ \leq\ \; R\_{\green{P\_S}}(h)\ +\ \frac{1}{2} d\_{\mathcal{H}\;\Delta\;\mathcal{H}}(\green{D\_S},\orange{D\_T})\ +\ \nu $
+  - Domain divergence:   $d\_{\mathcal{H}\;\Delta\;\mathcal{H}}(\green{D\_S},\orange{D\_T}) \;=\; 2 \sup\_{(h,h')\in\mathcal{H}^2} \Big| R\_{\orange{D\_T}}(h,h') - R\_{\green{D\_S}}(h,h')\Big| $
+  - Error of the joint optimal classifier:   $\nu = \inf\_{h'\in\mathcal{H}}\big(R\_{\green{P\_S}}(h')+R\_{\orange{P\_T}}(h')\big)$
+- {notes notslide}
+  - with some probability (1 - delta)
+  - H a symmetric hypothesis space
+  - <a target="_blank" href="../2014-06-solstice-marc-rahaf/seminaire.pdf">More (by M. Sebban)</a>, <a target="_blank" href="http://epat2014.sciencesconf.org/conference/epat2014/pages/slides_DA_epat_17.pdf">epat slides</a>
+  - about what is d_HH <a target="_blank" href="http://web.eecs.umich.edu/~kulesza/pubs/adapt_nips07.pdf">nips 07</a>
+
+
+## Unsupervised Visual Domain Adaptation Using Subspace Alignment − ICCV 2013 <br/>*Basura Fernando, Amaury Habrard, Marc Sebban, Tinne Tuytelaars* {paper libyli}
+- Intuition for unsupervised domain adaptation
+  - principal components of the domains may be shared
+  - principal components should be re-aligned
+- Principle // with K.U. Leuven (T. Tuytelaars)
+  - extract a <src>source</src> subspace ($d$ largest eigen vectors)
+  - extract a <tgt>target</tgt> subspace ($d$ largest eigen vectors)
+  - learn a linear mapping function <br/>that aligns the <src>source</src> subspace with the <tgt>target</tgt> one {slide anim-continue}
+- <img src="images-da-align/sAlign.png" width="300px" /> {no}
+
+
+## Subspace Alignment − Algorithm
+- Algorithm {card custom2 libyli}
+  - **Input:** Source data $\green{S}{}$, Target data $\orange{T}{}$, Source labels $\green{L\_S}{}$
+  - **Input:** Subspace dimension $d$ {no}
+  - **Output:** Predicted target labels $\orange{L\_T} {}$ {no}
+  - $\green{X\_S} \leftarrow PCA(\green{S},d)$ *(source subspace defined by the first d eigenvectors)*
+  - $\orange{X\_T} \leftarrow PCA(\orange{T},d)$  *(target subspace defined by the first d eigenvectors)*
+  - $M \leftarrow \green{X\_S}' \orange{X\_T}{}$ *(closed form alignment)*
+  - $X\_a \leftarrow \green{X\_S} M$  *(operator for aligning the source subspace to the target one)*
+  - $\gray{S\_a} = \green{S}  X\_a$   *(new source data in the aligned space)*
+  - $\gray{T\_T} = \orange{T} \orange{X\_T}{}$  *(new target data in the aligned space)*
+  - $\orange{L\_T} \leftarrow Classifier(\gray{S\_a},\green{L\_S}, \gray{T\_T})$
+- A natural similarity: $Sim(\mathbf{x}\_s,\mathbf{x}\_t)=\mathbf{x}\_sX\_SMX\_T' \mathbf{x}\_t'=\mathbf{x}\_sA \mathbf{x}\_t'$ {slide}
+
+## Subspace Alignment − Recap. {#sarecap}
+- Good
+  - Very simple and intuitive method
+  - Totally unsupervised
+  - Theoretical results for dimensionality detection
+  - Good <a href="#sup-saresults">results</a> on computer vision datasets
+  - Can be combined with supervised information // as we learn in the target space in the end
+- Bad {limitations}
+  - Cannot be directly kernelized to deal with non linearity
+  - Actually assumes that spaces are relatively close
+- Ugly {limitations}
+  - Assumes that all the source and target examples are relevant
+- **Idea:** *Select landmarks from both source and target domains to project the data in a common space using a kernel w.r.t those chosen landmarks. Then the subspace alignment is performed. {dense}* {hidden}
+
+
+
+<!-- ##########  LS-SA  ########## -->
+# @copy:#plan: %+class:highlight: .landmarks
+
+# @copy:#sarecap: %+class:highlight: .limitations + %-class:hidden: .hidden
+
+## Principle of Landmarks {libyli}
+- JMLR 2013 − *Connecting the Dots with Landmarks: <br/> Discriminatively Learning Domain-Invariant Features for Unsupervised Domain Adaptation{denser}* {no}
+  - Boqing Gong, Kristen Grauman, Fei Sha
+- Principle: find source points (the landmarks) such that <br/>the domains are similarly distributed “around” {inlineblock}
+  - @svg:images-da-landmarks/landmarks1.svg 280px 100px
+  - @svg:images-da-landmarks/landmarks2.svg 280px 100px
+- Optimization problem: 
+  $\min\_\alpha \left\\| \frac{1}{\sum\_m \alpha\_m } \sum\_m \alpha\_m \phi (x\_m) - \frac{1}{N} \sum\_n \phi(x\_n) \right\\|^2$ {dense}
+- {no}
+  - $\alpha$: binary landmark indicator variables
+  - $\phi(.)$: nonlinear mapping, maps every $x$ to a RKHS
+  - minimize the difference in sample-means
+  - \+ a constraint: *labels should be balanced among the landmarks*
+
+
+## Landmarks-based Kernelized Subspace Alignment for Unsupervised DA − CVPR 2015 <br/>*Rahaf Aljundi, Rémi Emonet, Damien Muselet, Marc Sebban* {paper libyli}
+- Intuition for landmarks-based alignment
+  - subspace alignment does not handle non-linearity
+  - subspace alignment cannot “ignore” points
+  - landmarks can be a useful to handle locality and non-linearity
+- Challenges
+  - selecting landmarks in a unsupervised way
+  - choosing the proper Gaussian-kernel scale
+
+@svg:images-da-landmarks/landmarks3.svg 700px 200px
+
+## Proposed Approach − Workflow
+@svg:images-da-landmarks/workflow.svg 700px 400px
+- @anim: %viewbox:#zlandpro +
+- @anim: #s1 | #s1t2 | #s2 | #s3 | %viewbox:#zpca
+- @anim: #s4 | %viewbox:#zalign
+- @anim: #s5 | %viewbox:#zclassify
+- @anim: #s6 | #s7 | %viewbox:#zall
+- Overall approach
+  - 2 new steps: *landmark selection*, *projection* on landmarks
+  - subspace alignment
+
+## Multiscale Landmark Selection {libyli}
+- Select landmarks among all points, $\green{S} \cup \orange{T} {}$
+- Greedy selection
+  - consider each candidate point $c$ and a set of possible scales $s$
+  - criteria to promote the candidate
+     - after projection on the candidate
+     - the overlap between source and target distributions is above a threshold
+- Projection: a point is projected with $K(c, p)= \exp \left( \frac{-\left\|c - p\right\|^2}{2 s^2} \right)$ {dense}
+- Overlap {libyli}
+  - project <src>source</src> and <tgt>target</tgt> points
+  - fit two Gaussians (one for each)
+  - $ overlap(\green{\mu\_S, \sigma\_S} ; \orange{\mu\_T, \sigma\_T}) = \frac{\mathcal{N}(\green{\mu\_S} - \orange{\mu\_T} \mid 0, \sigma\_{sum}^2)}{\mathcal{N}(0 \mid 0, \sigma\_{sum}^2)} $
+      - normalized integral of product
+      - with $\sigma\_{sum}^2 = \green{\sigma\_S}^2 + \orange{\sigma\_T}^2$, and $\mathcal{N}(. \mid 0, \sigma\_{sum}^2)$ centered 1d-Gaussian
+
+## Landmark-Based Alignment − Overall {#sadarecap libyli}
+- Select landmarks among all points, $\green{S} \cup \orange{T} {}$
+  - greedy selection
+  - multi-scale selection
+  - maximize domain overlap
+- Project all points on the landmarks
+  - use a Gaussian kernel
+  - $\sigma \gets median\\_distance(S \cup T) $
+- Subspace-align the projected points
+  - PCA on <src>source</src> domain
+  - PCA on <tgt>target</tgt> domain
+  - compute the alignment $M$
+
+## Landmark-Based Alignment − Results {libyli}
+- Is landmark-based kernelization useful?
+- *@svg:images-da-landmarks/results.svg 730px 200px* {no}
+- Is our landmark-selection any good?
+- *@svg:images-da-landmarks/results-sel-landmarks.svg 730px 200px* {no}
+
+<!-- todo, in a slide, in 1 minute), before landmarks ?  -->
+# “Deep” Domain Adapation {deep-da}
+
+## Domain Adaptation in Deep Neural Nets {libyli dense}
+
+*Based on the same core principles: bring distributions together*
+
+- See Elisa Fromont's talk *@SVG: media/ganin.svg 400 200 {floatright}*
+  - Domain-Adversarial Training... Ganin et al.<br/> (JMLR 2016) // Yaroslav Ganin, Evgeniya Ustinova, Hana Ajakan, Pascal Germain, Hugo Larochelle, François Laviolette, Mario Marchand, Victor Lempitsky
+  - ADDA
+  - chairlifts
+  - avoiding negative transfer using domain distances
+// - @anim: #domclass | #domclassback | #grl | #grlfeat
+- Batch normalization and AdaBN
+- AutoDIAL
+- Multitask-multidomain semantic segmentation (Damien Fourure)
+- <video height="150" style="float:right" src="https://perso.univ-st-etienne.fr/fod07375/style/GridNet_results.mp4" onclick="this.paused ? this.play() : this.pause()" controls="true"></video>
+  *@SVG: media/mdmt.svg 350 180 {inlineblock}* {no}
+
+
+
+<!-- ##########  MVL-SVM  ########## -->
+# @copy:#plan: %+class:highlight: .mvlsvm
+
+# Multi-view Classification <br/> with Landmark-based SVM {title-slide}
+- by **Valentina Zantedeschi**, Rémi Emonet, Marc Sebban
+- as part of the ANR LIVES project (multiview)
+
+<!--
+# Random projections
+# Landmark projection (see before) but with random points
+# Explain the main idea of the paper
+-->
+
+## MVL-SVM Principle
+- Randomly select landmarks {select-landmarks}
+  - $L$ points $l_1, l_2, \cdots, l_L$ from the dataset
+  - with no missing views
+- Project all points on this landmarks {project}
+  - use an arbitrary $\mu$ similarity measure
+- Learn a model (classifier) {learn}
+  - in the joint projected space
+  - fast and linear (non-linearity already in the projection)
+- *@SVG: mvlsvm/mvlsvm.svg 750 250* {no}
+  - @anim: #xi |#xin |#v1 |#v2 |#v3
+  - @anim: .select-landmarks | .project
+  - @anim: #mapv1 |#mapv2 |#mapv3 |#muxi |#mapjoint, #joint |.learn |#fx, #learnjoint
+
+## Generalization Bound
+- The generalization bound of MVL-SVM, <br/> derived using the Uniform Stability framework:
+  $ R_{\mathcal{D}}(f)\\! \leq \\!\hat{R}_{S}(f) + \frac{c L V M^2}{m} + \left( 2c L V M^2 \\!+ \\!1 \\!+\\! 2c \sqrt{L V} M \\! \right)\\!\\!\sqrt{\frac{\ln \frac{1}{\delta}}{2m}} {dense}$
+- $L$ number of landmarks
+- $M$ number of views
+- $m$ number of samples
+- NB
+  - stable if $L \ll \frac{m}{V}{}$ // ok, as usually $m \gg V$.
+  - the lower $L$, the more stable
+
+## MVL-SVM Results {libyli} // svm-2k co-regularization of view to maximize agreement
+- {inlineblock no} // MVML Multi-view Metric Learning (MVML) which combines vvRKHS with Metric Learning
+  - <img src="mvlsvm/complete/flower-accuracy.png"/> {c5}
+  - <img src="mvlsvm/complete/uwave-accuracy.png"/> {c5}
+- {inlineblock no}
+  - <img src="mvlsvm/complete/acc-vs-time.png"/> {c10}
+
+## Missing Views? {libyli}
+- Landmark-based missing view reconstruction method
+- Allow to maintain accuracy and scalability
+- {inlineblock no}
+  - <img src="mvlsvm/missing/flower17.png"/> {c5}
+  - <img src="mvlsvm/missing/uwave.png"/> {c5}
+
+
+# @copy:#nutshell
+
+
+<!-- ######################################################################################### -->
+# Thank You <br/> Questions?  {deck-status-fake-end no-print}
+
+# Supplementary Material {no-print}
+
+# Supp. on source and target risk {sup-risks}
+
+## Link the Target Risk to the Source?
+\begin{matrix}
+\\\\
+R\_{\orange{P\_T}}(h)&=& \mathbf{E}\_{(x^t,y^t)\sim \orange{P\_T}}\mathbf{I}\big[h(x^t)\ne y^t\big]\\\\
+\\\\
+&=&\mathbf{E}\_{(x^t,y^t)\sim \orange{P\_T}}\frac{\green{P\_S}(x^t,y^t)}{\green{P\_S}(x^t,y^t)}\mathbf{I}\big[h(x^t)\ne y^t\big]\\\\
+\\\\
+&=&\sum\_{(x^t,y^t)} \orange{P\_T}(x^t,y^t)\frac{\green{P\_S}(x^t,y^t)}{\green{P\_S}(x^t,y^t)}\mathbf{I}\big[h(x^t)\ne y^t\big]\\\\
+\\\\
+&=&\mathbf{E}\_{(x^t,y^t)\sim
+  \green{P\_S}}\frac{\orange{P\_T}(x^t,y^t)}{\green{P\_S}(x^t,y^t)}\mathbf{I}\big[h(x^t)\ne
+y^t\big]\\\\
+\end{matrix}
+{latex slide}
+
+# Supp. on covariate shift
+
+## Domain Adaptation − Covariate Shift? {libyli} // This difference between the two domains is called covariate shift (Shimodaira, 2000).
+- {card dense}
+  - R\_{\orange{P\_T}}(h)\; =\;\; \mathbf{E}\_{(x^t,y^t)\sim  \green{P\_S}}\frac{\orange{P\_T}(x^t,y^t)}{\green{P\_S}(x^t,y^t)}\mathbf{I}\big[h(x^t)\ne y^t\big] {latex}
+  - The <tgt>target</tgt> risk can be rewritten as an expectation on the <src>source</src>
+- Covariate Shift {card}
+  - When $\green{P\_S}(y^t|x^t)=\orange{P\_T}(y^t|x^t)$ (covariate shift assumption)
+  - Very strong assumption
+  - We can estimate a ratio between unlabeled data
+  - <br/>{no}
+  - \begin{matrix}
+    {R\_{\orange{P\_T}}(h)}&=&\mathbf{E}\_{(x^t,y^t)\sim \green{P\_S}}\frac{\orange{D\_T}(x^t)\orange{P\_T}(y^t|x^t)}{\green{D\_S}(x^t)\green{P\_S}(y^t|x^t)}\mathbf{I}\big[h(x^t)\ne y^t\big]\\\\ \\\\
+    &=&\mathbf{E}\_{(x^t,y^t)\sim \green{P\_S}}\frac{\orange{D\_T}(x^t)}{\green{D\_S}(x^t)}\mathbf{I}\big[h(x^t)\ne y^t\big]\\\\
+    \end{matrix}
+    {latex no slide}
+  - **&rArr; Approach**: density estimation and instance re-weighting {no slide} // actually, it is simpler to estimate the density of the ratio
+- {notes notslide}
+  - nice pres http://www.slideserve.com/Anita/sample-selection-bias
+
+## Supp. on Subspace Alignment Results {.sup-saresults}
+
+## Subspace Alignment − Experiments {libyli}
+- *@svg:images-da-align/img-iccv13.svg 800px 200px* {no}
+- Comparison on visual domain adaptation tasks // SURF, 800 words?
+  - adaptation from Office/Caltech-10 datasets (four domains to adapt)
+  - adaptation on ImageNet, LabelMe and Caltech-256 datasets: one is used as source and one as target
+- Other methods
+  - Baseline 1: projection on the source subspace
+  - Baseline 2: projection on the target subspace
+  - 2 related methods:
+      - GFS [Gopalan et al.,ICCV'11] // Geodesic flow subspaces
+      - GFK [Gong et al., CVPR'12] // Geodesic flow kernel
+
+## Subspace Alignment − Results {dense libyli}
+- Office/Caltech-10 datasets {inlineblock}
+  - @svg:images-da-align/result1-NN-iccv13.svg 330px 250px
+  - @svg:images-da-align/result1-SVM-iccv13.svg 330px 250px
+- ImageNet (I), LabelMe (L) and Caltech-256 (C)  datasets {inlineblock}
+  - @svg:images-da-align/result2-NN-iccv13.svg 330px 130px
+  - @svg:images-da-align/result2-SVM-iccv13.svg 330px 130px
+
+
+# Attribution
+
+
+## CC by genevieveromier (Flickr) {image-full bottom-left darkened /black-bg /no-status}
+<div class="img" style="background-image: url('fruit-images/blueberry-tree.jpg')" data-attribution="https://www.flickr.com/photos/30701623@N02/6057915359/sizes/l" data-attribution-content="CC by genevieveromier (Flickr)" data-scale="600"></div>
+
+## CC by anmuell (Flickr) {image-full bottom-left darkened /black-bg /no-status}
+<div class="img" style="background-image: url('fruit-images/almond-fruit.jpg')" data-attribution="https://www.flickr.com/photos/22103696@N07/4159254844/sizes/l" data-attribution-content="CC by anmuell (Flickr)" data-scale=""></div>
+
+## CC by sgillies (Flickr) {image-full bottom-left darkened /black-bg /no-status}
+<div class="img" style="background-image: url('fruit-images/almond-tree.jpg')" data-attribution="https://www.flickr.com/photos/by-sgillies/4615747067/sizes/l" data-attribution-content="CC by sgillies (Flickr)" data-scale="800"></div>
+
+## CC by mustetahra (Flickr) {image-full bottom-left darkened /black-bg /no-status}
+<div class="img" style="background-image: url('fruit-images/blueberry-fruit.jpg')" data-attribution="https://www.flickr.com/photos/mustetahra/2980968903/sizes/l" data-attribution-content="CC by mustetahra (Flickr)" data-scale=""></div>
+
+
+            </section>
+
+            <!-- footer and other decorations -->
+            <p class="deck-status deck-progress-10">
+                    <span class="deck-status-current"></span> / <span class="deck-status-total"></span> − <span class="var-author">automatically replaced by the author</span> − <span class="var-title">automatically replaced by the title</span>
+            </p>
+            <a class="cornerlogo"
+            data-progress-size=": spe.bottom(20, 40); height: 75*.9*designRatio/2; left: slide.left*.6; width: 273*.9*designRatio/2"
+            href="https://mixitconf.org/" target="_blank"></a>
+
+        </div>
+    </body>
+
+</html>
